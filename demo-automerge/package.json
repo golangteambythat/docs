@@ -1,0 +1,18 @@
+{
+  "name": "socketio",
+  "version": "1.0.0",
+  "description": "socketio test",
+  "main": "index.js",
+  "dependencies": {
+    "automerge": "^0.13.0",
+    "express": "^4.17.1",
+    "node-uuid": "^1.4.8",
+    "socket.io": "^2.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "test"
+  },
+  "author": "Zerpro",
+  "license": "MIT"
+}

@@ -1,4 +1,3 @@
-var AutoMerge = require('automerge');
 var express = require('express');
 var app = express();
 var http = require('http').createServer(app);
@@ -32,17 +31,6 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('server-actions', changesInfo);
   });
 });
-
-// setInterval(() => {
-//   let newDoc = AutoMerge.init();
-//   newDoc = AutoMerge.change(newDoc, doc => {
-//     doc.text = new AutoMerge.Text();
-//     doc.text.insertAt(0, ...servDoc.text.toString().split(''));
-//   });
-//   servDoc = newDoc;
-//   let docStr = AutoMerge.save(newDoc);
-//   io.emit('client-init', docStr);
-// }, 5000);
 
 
 http.listen(3000, function () {

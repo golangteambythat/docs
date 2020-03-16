@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Socket.IO chat</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font: 13px Helvetica, Arial;
+    }
+
+    textarea {
+      width: 100%;
+      height: 500px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <textarea></textarea>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+<script src="https://cdn.bootcss.com/jsdiff/4.0.2/diff.min.js"></script>
+<script>
+  $(function () {
+    const SOCKET_CONNECTED = "connect";
+    const SOCKET_CLIENT_INIT = "client-init";
+    const SOCKET_CLIENT_ACTIONS = "client-actions";
+    const SOCKET_SERVER_ACTIONS = "server-actions";
+
+    const OP_REMOVED = "removed";
+    const OP_ADDED = "added";
+
+    let TotalContent = {
+      doc: {},
+      localDoc: {},
+      changes: {},
+      content: "",
+
+      init(docStr) {
+        let servDoc = Automerge.load(docStr);
+        this.doc = Automerge.init();
+        this.doc = Automerge.merge(this.doc, servDoc);
+        this.content = this.doc.text.toString();
+      },
+
+      applyChanges(changes) {
+        this.doc = Automerge.applyChanges(this.doc, changes);
+        this.content = this.doc.text.toString();
+      },
+
+      // 第一段更新
+      update(newContent) {
+        let index = 0;
+        let oldActions = this.diff(newContent);
+        let changeCount = 0;
+        let infos = [];
+        for (let i of oldActions) {
+          if (OP_ADDED in i && i[OP_ADDED]) {
+            changeCount++;
+            infos.push({ operat: OP_ADDED, index: index, value: i.value, count: i.count });
+            index += i.count;
+          } else if (OP_REMOVED in i && i[OP_REMOVED]) {
+            changeCount++;
+            infos.push({ operat: OP_REMOVED, index: index, value: '', count: i.count });
+          } else {
+            index += i.count;
+          }
+        }
+
+        if (changeCount > 0) {
+          let newDoc = Automerge.change(this.doc, doc => {
+            for (let i of infos) {
+              if (i.operat === OP_ADDED) {
+                doc.text.insertAt(i.index, ...(i.value.split('')));
+              } else if (i.operat === OP_REMOVED) {
+                doc.text.deleteAt(i.index, i.count);
+              }
+            }
+          });
+          this.changes = Automerge.getChanges(this.doc, newDoc);
+          this.doc = newDoc;
+          this.content = this.doc.text.toString();
+          return true;
+        }
+        // 有改动返回true
+        return false;
+      },
+
+
+      diff(newContent) {
+        return Diff.diffChars(this.content, newContent);
+      },
+
+      getChanges() {
+        return this.changes;
+      },
+
+      getString() {
+        return this.content;
+      },
+    };
+
+    let textarea = $("textarea");
+
+    // 禁止textarea
+    textarea.attr("disabled", true);
+
+    var socket = io();
+
+    socket.on(SOCKET_CONNECTED, () => {
+      console.log("socket connected, id: ", socket.id);
+    });
+
+    socket.on(SOCKET_SERVER_ACTIONS, (changesInfo) => {
+      let changes = JSON.parse(changesInfo);
+      TotalContent.applyChanges(changes);
+      textarea.val(TotalContent.getString());
+    });
+
+    socket.on(SOCKET_CLIENT_INIT, (docStr) => {
+      console.log("client init, docStr: ", docStr);
+      TotalContent.init(docStr);
+      textarea.val(TotalContent.getString());
+
+      // 绑定textarea变化事件
+      textarea.unbind();
+      textarea.bind('input propertychange change', () => {
+        let content = textarea.val();
+        if (TotalContent.update(content)) {
+          console.log('emit changes ', TotalContent.getChanges());
+          socket.emit(SOCKET_CLIENT_ACTIONS, JSON.stringify(TotalContent.getChanges()));
+        }
+      });
+
+      // 开启textarea
+      textarea.attr("disabled", false);
+    });
+
+  });
+
+
+
+  var TT = {
+
+    /*
+     * 获取光标位置
+     * @Method getCursorPosition
+     * @param t element
+     * @return number
+     */
+    getCursorPosition: function (t) {
+      if (document.selection) {
+        t.focus();
+        var ds = document.selection;
+        var range = ds.createRange();
+        var stored_range = range.duplicate();
+        stored_range.moveToElementText(t);
+        stored_range.setEndPoint("EndToEnd", range);
+        t.selectionStart = stored_range.text.length - range.text.length;
+        t.selectionEnd = t.selectionStart + range.text.length;
+        return t.selectionStart;
+      } else return t.selectionStart
+    },
+
+
+    /*
+     * 设置光标位置
+     * @Method setCursorPosition
+     * @param t element
+     * @param p number
+     * @return
+     */
+    setCursorPosition: function (t, p) {
+      this.sel(t, p, p);
+    },
+
+    /*
+     * 插入到光标后面
+     * @Method add
+     * @param t element
+     * @param txt String
+     * @return
+     */
+    add: function (t, txt) {
+      var val = t.value;
+      if (document.selection) {
+        t.focus()
+        document.selection.createRange().text = txt;
+      } else {
+        var cp = t.selectionStart;
+        var ubbLength = t.value.length;
+        var s = t.scrollTop;
+        //    document.getElementById('aaa').innerHTML += s + '<br/>';
+        t.value = t.value.slice(0, t.selectionStart) + txt + t.value.slice(t.selectionStart, ubbLength);
+        this.setCursorPosition(t, cp + txt.length);
+        //    document.getElementById('aaa').innerHTML += t.scrollTop + '<br/>';
+        firefox = navigator.userAgent.toLowerCase().match(/firefox\/([\d\.]+)/) && setTimeout(function () {
+          if (t.scrollTop != s) t.scrollTop = s;
+        }, 0)
+
+      };
+    },
+
+
+    /*
+     * 删除光标 前面或者后面的 n 个字符
+     * @Method del
+     * @param t element
+     * @param n number  n>0 后面 n<0 前面
+     * @return
+     * 重新设置 value 的时候 scrollTop 的值会被清0
+     */
+    del: function (t, n) {
+      var p = this.getCursorPosition(t);
+      var s = t.scrollTop;
+      var val = t.value;
+      t.value = n > 0 ? val.slice(0, p - n) + val.slice(p) :
+        val.slice(0, p) + val.slice(p - n);
+      this.setCursorPosition(t, p - (n < 0 ? 0 : n));
+      firefox = navigator.userAgent.toLowerCase().match(/firefox\/([\d\.]+)/) && setTimeout(function () {
+        if (t.scrollTop != s) t.scrollTop = s;
+      }, 10)
+    },
+
+    /*
+     * 选中 s 到 z 位置的文字
+     * @Method sel
+     * @param t element
+     * @param s number
+     * @param z number
+     * @return
+     */
+    sel: function (t, s, z) {
+      if (document.selection) {
+        var range = t.createTextRange();
+        range.moveEnd('character', -t.value.length);
+        range.moveEnd('character', z);
+        range.moveStart('character', s);
+        range.select();
+      } else {
+        t.setSelectionRange(s, z);
+        t.focus();
+      }
+
+    },
+
+
+    /*
+     * 选中一个字符串
+     * @Method sel
+     * @param t element
+     * @param s String
+     * @return
+     */
+    selString: function (t, s) {
+      var index = t.value.indexOf(s);
+      index != -1 ? this.sel(t, index, index + s.length) : false;
+    }
+
+  }
+
+</script>
+
+</html>
